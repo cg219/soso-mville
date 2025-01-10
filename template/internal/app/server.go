@@ -202,6 +202,11 @@ func (s *Server) getFile(w http.ResponseWriter, filepath string) {
     w.Write(data)
 }
 
+func (s *Server) getResetPage(w http.ResponseWriter, r *http.Request) error {
+    s.getFile(w, "static-app/entrypoints/reset.html")
+    return nil
+}
+
 func (s *Server) getLoginPage(w http.ResponseWriter, r *http.Request) error {
     s.getFile(w, "static-app/entrypoints/auth.html")
     return nil
@@ -465,6 +470,26 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) error {
     s.unsetTokens(w, r)
     encode(w, http.StatusOK, SuccessResp{ Success: true })
     s.log.Info("Logout", "success", true)
+    return nil
+}
+
+func (s *Server) GetResetPasswordData(w http.ResponseWriter, r *http.Request) error {
+    type Data struct {
+        Valid bool `json:"valid"`
+        Username string `json:"username"`
+        Reset string `json:"reset"`
+    }
+
+    reset := r.PathValue("resetvalue")
+
+    dbValue, _ := s.appcfg.database.CanResetPassword(r.Context(), database.CanResetPasswordParams{
+        ResetTime: sql.NullInt64{ Int64: time.Now().Unix(), Valid: true },
+        Reset: sql.NullString{ String: reset, Valid: true },
+    })
+
+    data := Data{ Valid: dbValue.Valid, Username: dbValue.Username, Reset: reset }
+
+    encode(w, 200, data)
     return nil
 }
 
