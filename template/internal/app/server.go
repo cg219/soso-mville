@@ -82,10 +82,7 @@ func addRoutes(srv *Server) {
 
     srv.mux.Handle("GET /", srv.handle(srv.getLoginPage))
     srv.mux.Handle("GET /assets/", http.StripPrefix("/assets", http.FileServer(http.FS(static))))
-    srv.mux.Handle("POST /api/login", srv.handle(srv.LogUserIn))
-    srv.mux.Handle("POST /api/logout", srv.handle(srv.UserOnly, srv.LogUserOut))
     srv.mux.Handle("POST /api/generate-apikey/{name}", srv.handle(srv.UserOnly, srv.GenerateAPIKey))
-    srv.mux.Handle("POST /api/me", srv.handle(srv.UserOnly, srv.GetUserData))
     srv.mux.Handle("POST /api/forgot-password", srv.handle(srv.ForgotPassword))
     srv.mux.Handle("POST /api/reset-password", srv.handle(srv.ResetPassword))
     srv.mux.Handle("POST /auth/register", srv.handle(srv.Register))
