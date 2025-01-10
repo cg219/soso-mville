@@ -1,0 +1,23 @@
+version: "3.7"
+
+services:
+  {{SOSO_APPNAME}}:
+    image: ghcr.io/cg219/{{SOSO_APPNAME}}:main
+    environment:
+      - APP_DATA=data/database.db
+      - APP=/run/secrets/npsecrets
+      - PORT=8080
+    ports:
+      - 8080:8080
+    volumes:
+      - {{SOSO_APPNAME}}-data:/app/data
+    secrets:
+      - npsecrets
+
+secrets:
+  npsecrets:
+    file: secrets.yml
+
+volumes:
+  {{SOSO_APPNAME}}-data:
+

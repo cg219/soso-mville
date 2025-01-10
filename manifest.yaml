@@ -1,0 +1,17 @@
+files:
+  - Dockerfile  
+  - compose.yaml
+  - go.mod
+  - secrets.sample.yaml
+  - main.go
+  - stack.yaml
+  - internal/app/server.go
+  - internal/app/app.go
+  - internal/app/middleware.go
+  - frontend/entrypoints/auth.html
+  - frontend/entrypoints/reset.html
+  - frontend/src/pages/Reset.svelte
+
+tokens:
+  - repo:{{SOSO_REPO}}
+  - app name:{{SOSO_APPNAME}}
