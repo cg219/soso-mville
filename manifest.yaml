@@ -13,5 +13,9 @@ files:
   - frontend/src/pages/Reset.svelte
 
 tokens:
-  repo: "{{SOSO_REPO}}"
-  appname: "{{SOSO_APPNAME}}"
+  repo: 
+    token: "{{SOSO_REPO}}"
+    prompt: What is the name of your repo??
+  appname:
+    token: "{{SOSO_APPNAME}}"
+    prompt: What is the name of your app??
