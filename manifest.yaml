@@ -13,5 +13,5 @@ files:
   - frontend/src/pages/Reset.svelte
 
 tokens:
-  - repo:{{SOSO_REPO}}
-  - appname:{{SOSO_APPNAME}}
+  repo: {{SOSO_REPO}}
+  appname: {{SOSO_APPNAME}}
