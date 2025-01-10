@@ -14,4 +14,4 @@ files:
 
 tokens:
   - repo:{{SOSO_REPO}}
-  - app name:{{SOSO_APPNAME}}
+  - appname:{{SOSO_APPNAME}}
