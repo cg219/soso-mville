@@ -6,7 +6,9 @@ CREATE TABLE users (
     password TEXT NOT NULL,
     email TEXT NOT NULL,
     reset TEXT,
-    reset_time INTEGER
+    reset_time INTEGER,
+    valid INTEGER,
+    valid_token TEXT
 );
 
 CREATE TABLE sessions (

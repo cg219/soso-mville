@@ -12,13 +12,18 @@ RUN cd frontend && /root/.deno/bin/deno install && /root/.deno/bin/deno task bui
 RUN go build main.go
 RUN chmod +x /build/{{SOSO_APPNAME}}
 
-FROM ubuntu:latest AS dev
-RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
-COPY --from=build /build/{{SOSO_APPNAME}} /usr/local/bin/nowplaying
-COPY --from=build /build/.env /usr/local/bin/.env
-RUN chmod +x /usr/local/bin/{{SOSO_APPNAME}}
+FROM golang:1.23 AS dev
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+RUN apt-get update && apt-get install -y gcc libc-dev unzip
+RUN apt-get install -y ca-certificates && update-ca-certificates
+RUN curl -fsSL https://deno.land/install.sh | sh
+WORKDIR /app
+COPY go.* ./
+RUN go mod download
+COPY . .
 EXPOSE 8080
-ENTRYPOINT [ "/usr/local/bin/{{SOSO_APPNAME}}" ]
 
 FROM alpine:latest AS production
 WORKDIR /app

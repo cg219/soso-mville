@@ -4,17 +4,26 @@ services:
       context: .
       target: dev
     working_dir: /app
+    command: /bin/bash -c -l ./build.dev.sh
     environment:
       - PORT=8080
     env_file:
       - .env
-    command: /usr/local/bin/{{SOSO_APPNAME}}
     ports:
       - 8080:8080
+    develop:
+      watch:
+        - action: rebuild
+          path: ./**/*.go
+        - action: rebuild
+          path: ./go.mod
+        - action: rebuild
+          path: ./go.sum
+        - action: sync+restart
+          path: .
+          target: /app
+          ignore:
+            - ./frontend/node_modules
+            - ./data
     volumes:
-      - $PWD:/app
-      - {{SOSO_APPNAME}}-data:/app/data
-
-volumes:
-  {{SOSO_APPNAME}}-data:
-
+      - $PWD/data:/app/data

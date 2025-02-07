@@ -90,6 +90,7 @@ func addRoutes(srv *Server) {
     srv.mux.Handle("POST /auth/register", srv.handle(srv.Register))
     srv.mux.Handle("POST /auth/login", srv.handle(srv.Login))
     srv.mux.Handle("POST /auth/logout", srv.handle(srv.UserOnly, srv.Logout))
+    srv.mux.Handle("GET /validate/{validvalue}", srv.handle(srv.ValidateRegistration)) 
     srv.mux.Handle("GET /reset/{resetvalue}", srv.handle(srv.getResetPage))
     srv.mux.Handle("POST /reset/{resetvalue}", srv.handle(srv.GetResetPasswordData))
 }
@@ -404,10 +405,45 @@ func (s *Server) isAuthenticated(ctx context.Context, ats, rts string) (bool, st
     return true, username.Value, nil, ctx 
 }
 
+func (s *Server) ValidateRegistration(w http.ResponseWriter, r *http.Request) error {
+    validvalue := r.PathValue("validvalue")
+    user, err := s.appcfg.database.GetUserByValidToken(r.Context(), sql.NullString{
+        String: validvalue,
+        Valid: true,
+    })
+
+    if err != nil {
+        if err == sql.ErrNoRows {
+            http.Redirect(w, r, "/", http.StatusSeeOther)
+            return nil
+        } else {
+            s.log.Error("checking valid token", "token", validvalue, "err", err)
+            return fmt.Errorf(INTERNAL_ERROR)
+        }
+    }
+
+    if user.Username != "" {
+        err = s.appcfg.database.ValidateUser(r.Context(), user.Username)
+
+        if err != nil {
+            s.log.Error("validating user", "user", user.Username, "err", err)
+            return fmt.Errorf(INTERNAL_ERROR)
+        }
+
+        s.setTokens(w, r, user.Username)
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return nil
+    }
+
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+    return nil
+}
+
 func (s *Server) Register(w http.ResponseWriter, r *http.Request) error {
     type RegisterBody struct {
         Username string `json:"username"`
         Password string `json:"password"`
+        Email string `json:"email"`
     }
 
     body, err := decode[RegisterBody](r)
@@ -431,17 +467,31 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) error {
         return fmt.Errorf(INTERNAL_ERROR)
     }
 
+    validbytes := make([]byte, 32)
+    rand.Read(validbytes)
+    validToken := base64.URLEncoding.EncodeToString(validbytes)[:16]
+
     err = s.appcfg.database.SaveUser(r.Context(), database.SaveUserParams{
         Username: body.Username,
+        Email: body.Email,
         Password: hashPass,
+        ValidToken: sql.NullString{ String: validToken, Valid: true },
     })
+
+    e := Email{
+        From: s.appcfg.config.Email.From,
+        To: body.Email,
+        Subject: "Validate Email",
+        Body: fmt.Sprintf("Validate your email link:\n%s/validate/%s", s.appcfg.config.App.Url, validToken),
+    }
+
+    s.appcfg.emails <- e
 
     if err != nil {
         s.log.Error("Saving New User", "username", body.Username, "err", err)
         return fmt.Errorf(INTERNAL_ERROR)
     }
 
-    s.setTokens(w, r, body.Username)
     encode(w, http.StatusOK, SuccessResp{ Success: true })
     s.log.Info("Register Body", "body", body)
     return nil
