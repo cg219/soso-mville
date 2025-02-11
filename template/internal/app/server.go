@@ -296,6 +296,10 @@ func (s *Server) login(ctx context.Context, username string, password string) bo
         return false 
     }
 
+    if !existingUser.Valid.Valid {
+        return false
+    }
+
     correct, _ := s.hasher.Compare(password, existingUser.Password)
     if !correct {
         s.log.Info("Password Mismatch", "password", password)
@@ -522,7 +526,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) error {
 
     s.setTokens(w, r, body.Username)
     encode(w, http.StatusOK, SuccessResp{ Success: true })
-    s.log.Info("Login", "body", body)
+    s.log.Info("Login", "username", body.Username)
     return nil
 }
 
