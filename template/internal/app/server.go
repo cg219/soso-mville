@@ -29,6 +29,7 @@ type Server struct {
     appcfg *AppCfg
     log *slog.Logger
     hasher *argon2id.Argon2id
+    storage *Storage
 }
 
 type SuccessResp struct {
@@ -52,6 +53,7 @@ const (
     INTERNAL_ERROR = "Internal Server Error"
     AUTH_ERROR = "Authentication Error"
     USERNAME_EXISTS_ERROR = "Username Exists Error"
+    MISSING_PARAMS_ERROR = "Missing Parameters Error"
     GOTO_NEXT_HANDLER_ERROR = "Redirect Error"
     REDIRECT_ERROR = "Intentional Redirect Error"
 )
@@ -60,6 +62,7 @@ const (
     AUTH_FAIL
     AUTH_NOT_ALLOWED
     INTERNAL_SERVER_ERROR
+    BAD_REQUEST
 )
 
 func NewServer(cfg *AppCfg) *Server {
@@ -87,6 +90,7 @@ func addRoutes(srv *Server) {
     srv.mux.Handle("POST /api/generate-apikey/{name}", srv.handle(srv.UserOnly, srv.GenerateAPIKey))
     srv.mux.Handle("POST /api/forgot-password", srv.handle(srv.ForgotPassword))
     srv.mux.Handle("POST /api/reset-password", srv.handle(srv.ResetPassword))
+    srv.mux.Handle("POST /api/report", srv.handle(srv.UserOnly, srv.ReportBug))
     srv.mux.Handle("POST /auth/register", srv.handle(srv.Register))
     srv.mux.Handle("POST /auth/login", srv.handle(srv.Login))
     srv.mux.Handle("POST /auth/logout", srv.handle(srv.UserOnly, srv.Logout))
@@ -173,6 +177,39 @@ func (s *Server) ResetPassword(w http.ResponseWriter, r *http.Request) error {
     return nil
 }
 
+func (s *Server) ReportBug(w http.ResponseWriter, r *http.Request) error {
+    type Body struct {
+        Problem string `json:"problem"`
+        Result string `json:"result"`
+        Steps string `json:"steps"`
+    }
+
+    data, err := decode[Body](r)
+    if err != nil {
+        r.Body.Close()
+        return fmt.Errorf(INTERNAL_ERROR);
+    }
+
+    r.Body.Close()
+
+    err, user := s.storage.StoreBugReportWithContext(r.Context(), r.Context().Value("username").(string), data.Problem, data.Result, data.Steps)
+    if err != nil {
+        return fmt.Errorf(INTERNAL_ERROR);
+    }
+
+    e := Email{
+        From: s.appcfg.config.Email.From,
+        To: s.appcfg.config.App.Admin,
+        Subject: "The Common Game - Bug Report",
+        Body: fmt.Sprintf("Bug Report from: %s - %s\n\nProblem:\n%s\n\nExpected Results:\n%s\n\nReproduction Steps:\n%s\n\n", user.Username, user.Email, data.Problem, data.Result, data.Steps),
+    }
+
+    s.appcfg.emails <- e
+
+    encode(w, http.StatusOK, SuccessResp{ Success: true })
+    return nil
+}
+
 func (s *Server) ForgotPassword(w http.ResponseWriter, r *http.Request) error {
     resettimer := time.Now().Add(time.Minute * 15).Unix()
     resetbytes := make([]byte, 32)
@@ -196,9 +233,21 @@ func (s *Server) ForgotPassword(w http.ResponseWriter, r *http.Request) error {
         s.log.Error("resetting pass", "err", err)
     }
 
-    // TODO: Setup email service to send this to user email
-    s.log.Info("Reset Link:", "url", fmt.Sprintf("http://localhost:%s/reset/%s", "3006", reset))
+    user, err := s.appcfg.database.GetUser(r.Context(), username)
+    if err != nil {
+        s.log.Error("retreiving user for reset pass", "username", username, "err", err)
+    }
 
+    e := Email{
+        From: s.appcfg.config.Email.From,
+        To: user.Email,
+        Subject: "The Common Game - Forgot Password",
+        Body: fmt.Sprintf("Reset your password link:\n%s/reset/%s", s.appcfg.config.App.Url, reset),
+    }
+
+    s.appcfg.emails <- e
+
+    s.log.Info("Reset Link:", "url", fmt.Sprintf("Reset your password link:\n%s/reset/%s", s.appcfg.config.App.Url, reset))
     return nil
 }
 
@@ -213,6 +262,11 @@ func (s *Server) getFile(w http.ResponseWriter, filepath string) {
     w.Write(data)
 }
 
+func (s *Server) getAccountPage(w http.ResponseWriter, r *http.Request) error {
+    s.getFile(w, "static-app/entrypoints/settings.html")
+    return nil
+}
+
 func (s *Server) getResetPage(w http.ResponseWriter, r *http.Request) error {
     s.getFile(w, "static-app/entrypoints/reset.html")
     return nil
@@ -220,6 +274,11 @@ func (s *Server) getResetPage(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Server) getLoginPage(w http.ResponseWriter, r *http.Request) error {
     s.getFile(w, "static-app/entrypoints/auth.html")
+    return nil
+}
+
+func (s *Server) getReportPage(w http.ResponseWriter, r *http.Request) error {
+    s.getFile(w, "static-app/entrypoints/report.html")
     return nil
 }
 
@@ -418,35 +477,17 @@ func (s *Server) isAuthenticated(ctx context.Context, ats, rts string) (bool, st
 }
 
 func (s *Server) ValidateRegistration(w http.ResponseWriter, r *http.Request) error {
-    validvalue := r.PathValue("validvalue")
-    user, err := s.appcfg.database.GetUserByValidToken(r.Context(), sql.NullString{
-        String: validvalue,
-        Valid: true,
-    })
-
+    err, valid, username := s.storage.ValidateNewUserWithContext(r.Context(), r.PathValue("validvalue"))
     if err != nil {
-        if err == sql.ErrNoRows {
-            http.Redirect(w, r, "/", http.StatusSeeOther)
-            return nil
-        } else {
-            s.log.Error("checking valid token", "token", validvalue, "err", err)
-            return fmt.Errorf(INTERNAL_ERROR)
-        }
+        return err;
     }
 
-    if user.Username != "" {
-        err = s.appcfg.database.ValidateUser(r.Context(), user.Username)
-
-        if err != nil {
-            s.log.Error("validating user", "user", user.Username, "err", err)
-            return fmt.Errorf(INTERNAL_ERROR)
-        }
-
-        s.setTokens(w, r, user.Username)
-        http.Redirect(w, r, "/", http.StatusSeeOther)
+    if valid {
+        s.setTokens(w, r, username)
+        http.Redirect(w, r, "/game", http.StatusSeeOther)
         return nil
     }
-
+    
     http.Redirect(w, r, "/", http.StatusSeeOther)
     return nil
 }
@@ -463,14 +504,8 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) error {
         return err
     }
 
-    existingUser, err := s.appcfg.database.GetUser(r.Context(), body.Username)
-    if err != nil && err != sql.ErrNoRows {
-        s.log.Error("sql err", "err", err)
-        return fmt.Errorf(INTERNAL_ERROR)
-    }
-
-    if existingUser.Username != "" {
-        return fmt.Errorf(USERNAME_EXISTS_ERROR)
+    if body.Username == "" || body.Email == "" || body.Password == "" {
+       return fmt.Errorf(MISSING_PARAMS_ERROR)
     }
 
     hashPass, err := s.hasher.EncodeFromString(body.Password)
@@ -479,16 +514,10 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) error {
         return fmt.Errorf(INTERNAL_ERROR)
     }
 
-    validbytes := make([]byte, 32)
-    rand.Read(validbytes)
-    validToken := base64.URLEncoding.EncodeToString(validbytes)[:16]
-
-    err = s.appcfg.database.SaveUser(r.Context(), database.SaveUserParams{
-        Username: body.Username,
-        Email: body.Email,
-        Password: hashPass,
-        ValidToken: sql.NullString{ String: validToken, Valid: true },
-    })
+    err, validToken := s.storage.NewUserWithContext(r.Context(), body.Email, body.Username, hashPass)
+    if err != nil {
+        return err
+    }
 
     e := Email{
         From: s.appcfg.config.Email.From,

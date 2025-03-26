@@ -95,4 +95,3 @@ func StartEmailServer(cfg *AppCfg) {
         }
     }
 }
-
