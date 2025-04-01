@@ -11,7 +11,12 @@ files:
   - internal/app/storage.go
   - frontend/entrypoints/auth.html
   - frontend/entrypoints/reset.html
+  - frontend/entrypoints/report.html
+  - frontend/entrypoints/settings.html
   - frontend/src/pages/Reset.svelte
+  - frontend/src/pages/Settings.svelte
+  - frontend/src/pages/Auth.svelte
+  - frontend/src/pages/Report.svelte
 
 tokens:
   repo: 
