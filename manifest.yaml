@@ -8,6 +8,7 @@ files:
   - internal/app/server.go
   - internal/app/app.go
   - internal/app/middleware.go
+  - internal/app/storage.go
   - frontend/entrypoints/auth.html
   - frontend/entrypoints/reset.html
   - frontend/src/pages/Reset.svelte
